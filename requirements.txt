@@ -1,1 +1,6 @@
-fastapiuvicorngoogle-generativeaipython-telegram-botrequestspillow
+fastapi
+uvicorn
+google-generativeai
+python-telegram-bot
+requests
+pillow
