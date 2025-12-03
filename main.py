@@ -1,38 +1,43 @@
 import google.generativeai as genai
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware # <--- ¡ESTA ES LA CLAVE!
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import base64
 import io
 from PIL import Image
 import sqlite3
-from datetime import datetime
+import os  # <--- Necesario para leer secretos
 
 # ---------------------------------------------------------
-# 1. CONFIGURACIÓN
+# 1. CONFIGURACIÓN SEGURA
 # ---------------------------------------------------------
-# 👇 PON TU CLAVE AQUÍ OTRA VEZ
-CLAVE_GOOGLE = "AIzaSyCUh_Ui6Hq73XHdqnV7OTM2vOVR6Rv_-xg" 
+# Intentamos leer la clave de Render. Si no existe (estás en tu laptop),
+# puedes poner tu clave "quemada" como respaldo, o configurar variables de entorno en Windows.
+# Para que funcione en AMBOS lados sin cambiar código, usa este truco:
+
+CLAVE_GOOGLE = os.getenv("GOOGLE_API_KEY") 
+
+# Si no encuentra la clave en el sistema (ej: en tu laptop), usa esta de respaldo:
+if not CLAVE_GOOGLE:
+    # 👇 PEGA TU CLAVE AQUÍ SOLO PARA PRUEBAS LOCALES (Opcional)
+    CLAVE_GOOGLE = "PEGAR_TU_CLAVE_AQUI" 
+
 genai.configure(api_key=CLAVE_GOOGLE)
 
 system_instruction = "Eres Imbirt, un amigo virtual leal, altamente inteligente y divertido. Respondes con profundidad, usas emojis y te encanta ver fotos."
-model = genai.GenerativeModel(
-    'gemini-2.5-pro', 
-    system_instruction=system_instruction
-)
+model = genai.GenerativeModel('gemini-2.5-pro', system_instruction=system_instruction)
 
 app = FastAPI()
 
 # ---------------------------------------------------------
-# 🚨 2. CONFIGURACIÓN DE SEGURIDAD (CORS) - EL ARREGLO
+# 2. SEGURIDAD CORS (Permitir acceso web)
 # ---------------------------------------------------------
-# Esto le dice al navegador: "Deja pasar a cualquiera, es un servidor de pruebas"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],      # Acepta solicitudes de cualquier origen (archivo o web)
+    allow_origins=["*"], # Permite conexiones desde cualquier lugar (Tu PC o Internet)
     allow_credentials=True,
-    allow_methods=["*"],      # Acepta todos los métodos (POST, GET, etc.)
-    allow_headers=["*"],      # Acepta todos los encabezados
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ---------------------------------------------------------
@@ -46,10 +51,7 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS historial (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT,
-            role TEXT,
-            content TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            user_id TEXT, role TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     conn.commit()
@@ -58,8 +60,7 @@ def init_db():
 def guardar_mensaje(user_id, role, content):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO historial (user_id, role, content) VALUES (?, ?, ?)", 
-                   (str(user_id), role, content))
+    cursor.execute("INSERT INTO historial (user_id, role, content) VALUES (?, ?, ?)", (str(user_id), role, content))
     conn.commit()
     conn.close()
 
@@ -69,17 +70,16 @@ def cargar_historial(user_id):
     cursor.execute("SELECT role, content FROM historial WHERE user_id = ? ORDER BY id ASC LIMIT 20", (str(user_id),))
     rows = cursor.fetchall()
     conn.close()
-    
-    historial_gemini = []
+    historial = []
     for role, content in rows:
-        gemini_role = "model" if role == "ia" else "user"
-        historial_gemini.append({"role": gemini_role, "parts": [{"text": content}]})
-    return historial_gemini
+        g_role = "model" if role == "ia" else "user"
+        historial.append({"role": g_role, "parts": [{"text": content}]})
+    return historial
 
 init_db()
 
 # ---------------------------------------------------------
-# 4. API ENDPOINTS
+# 4. API
 # ---------------------------------------------------------
 class Mensaje(BaseModel):
     user_id: str
@@ -88,31 +88,25 @@ class Mensaje(BaseModel):
 
 @app.get("/")
 def home():
-    return {"estado": "Imbirt Web Ready", "cors": "Activado"}
+    return {"estado": "Imbirt Nube Activo", "modo": "Seguro"}
 
 @app.post("/chat")
 async def chatear(mensaje: Mensaje):
     try:
-        historia_previa = cargar_historial(mensaje.user_id)
-        chat_session = model.start_chat(history=historia_previa)
+        historia = cargar_historial(mensaje.user_id)
+        chat = model.start_chat(history=historia)
         
-        texto_usuario = mensaje.texto
-        if not texto_usuario and mensaje.imagen_base64:
-            texto_usuario = "Analiza esta imagen."
+        txt = mensaje.texto
+        if not txt and mensaje.imagen_base64: txt = "Analiza esta imagen."
 
         if mensaje.imagen_base64:
-            imagen_bytes = base64.b64decode(mensaje.imagen_base64)
-            imagen = Image.open(io.BytesIO(imagen_bytes))
-            response = chat_session.send_message([texto_usuario, imagen]) 
+            img = Image.open(io.BytesIO(base64.b64decode(mensaje.imagen_base64)))
+            response = chat.send_message([txt, img])
         else:
-            response = chat_session.send_message(texto_usuario)
+            response = chat.send_message(txt)
 
-        texto_respuesta = response.text
-
-        guardar_mensaje(mensaje.user_id, "user", texto_usuario)
-        guardar_mensaje(mensaje.user_id, "ia", texto_respuesta)
-
-        return {"imbirt": texto_respuesta}
-        
+        guardar_mensaje(mensaje.user_id, "user", txt)
+        guardar_mensaje(mensaje.user_id, "ia", response.text)
+        return {"imbirt": response.text}
     except Exception as e:
-        return {"error": f"Error interno: {str(e)}"}
+        return {"error": str(e)}
