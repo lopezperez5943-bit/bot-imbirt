@@ -7,22 +7,20 @@ import io
 from PIL import Image
 import sqlite3
 import os
-import edge_tts # <--- La librería de voz natural
+import edge_tts
 import tempfile
 
-# ---------------------------------------------------------
 # 1. CONFIGURACIÓN
-# ---------------------------------------------------------
-# Intentamos leer la clave de Render. Si no existe, usa la de respaldo.
 CLAVE_GOOGLE = os.getenv("GOOGLE_API_KEY") 
 if not CLAVE_GOOGLE:
     CLAVE_GOOGLE = "PEGAR_TU_CLAVE_AQUI" 
 
 genai.configure(api_key=CLAVE_GOOGLE)
 
-# Instrucción para que las respuestas sean ideales para hablar
-system_instruction = "Eres Imbirt, un asistente de IA avanzado. Tus respuestas son concisas, naturales y conversacionales, perfectas para ser leídas en voz alta. Usas emojis ocasionalmente."
-model = genai.GenerativeModel('gemini-2.5-pro', system_instruction=system_instruction)
+system_instruction = "Eres Imbirt, un asistente de IA avanzado. Tus respuestas son concisas, naturales y conversacionales. Usas emojis ocasionalmente."
+
+# Usamos el modelo FLASH para evitar límites de cuota
+model = genai.GenerativeModel('gemini-2.0-flash', system_instruction=system_instruction)
 
 app = FastAPI()
 
@@ -34,9 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------
 # 2. BASE DE DATOS
-# ---------------------------------------------------------
 DB_NAME = "memoria_imbirt.db"
 
 def init_db():
@@ -72,41 +68,28 @@ def cargar_historial(user_id):
 
 init_db()
 
-# ---------------------------------------------------------
-# 3. FUNCIÓN DE VOZ NEURAL
-# ---------------------------------------------------------
+# 3. VOZ NEURAL
 async def generar_audio_neural(texto):
-    # Voces disponibles: 
-    # 'es-MX-DaliaNeural' (Mujer México)
-    # 'es-MX-JorgeNeural' (Hombre México)
-    # 'es-ES-AlvaroNeural' (Hombre España)
     VOZ = "es-MX-DaliaNeural" 
-    
     communicate = edge_tts.Communicate(texto, VOZ)
-    
-    # Guardamos en memoria RAM para velocidad
     audio_stream = io.BytesIO()
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
             audio_stream.write(chunk["data"])
-            
     audio_stream.seek(0)
-    # Convertimos a base64 para enviarlo a la web
     audio_base64 = base64.b64encode(audio_stream.read()).decode('utf-8')
     return audio_base64
 
-# ---------------------------------------------------------
 # 4. API
-# ---------------------------------------------------------
 class Mensaje(BaseModel):
     user_id: str
     texto: str
     imagen_base64: str | None = None
-    usar_voz: bool = False # Nuevo campo: ¿Quiere audio?
+    usar_voz: bool = False
 
 @app.get("/")
 def home():
-    return {"estado": "Imbirt Voz Neural Online"}
+    return {"estado": "Imbirt Flash Online"}
 
 @app.post("/chat")
 async def chatear(mensaje: Mensaje):
@@ -117,7 +100,6 @@ async def chatear(mensaje: Mensaje):
         txt = mensaje.texto
         if not txt and mensaje.imagen_base64: txt = "Describe lo que ves."
 
-        # Generar respuesta de texto con IA
         if mensaje.imagen_base64:
             img = Image.open(io.BytesIO(base64.b64decode(mensaje.imagen_base64)))
             response = chat.send_message([txt, img])
@@ -125,22 +107,15 @@ async def chatear(mensaje: Mensaje):
             response = chat.send_message(txt)
 
         texto_respuesta = response.text
-        
-        # Guardar en memoria
         guardar_mensaje(mensaje.user_id, "user", txt)
         guardar_mensaje(mensaje.user_id, "ia", texto_respuesta)
 
-        # Generar Audio si se solicita
         audio_data = None
         if mensaje.usar_voz:
-            # Limpiamos asteriscos (*) para que no lea "asterisco hola asterisco"
             texto_limpio = texto_respuesta.replace("*", "").replace("#", "")
             audio_data = await generar_audio_neural(texto_limpio)
 
-        return {
-            "imbirt": texto_respuesta,
-            "audio": audio_data # Aquí va el archivo de sonido
-        }
+        return {"imbirt": texto_respuesta, "audio": audio_data}
         
     except Exception as e:
         return {"error": str(e)}
