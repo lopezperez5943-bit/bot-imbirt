@@ -1,0 +1,21 @@
+{
+  "name": "Imbirt AI",
+  "short_name": "Imbirt",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "description": "Tu asistente de IA omnicanal con visión y memoria.",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/4712/4712027.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/4712/4712027.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Imbirt Voice</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <!-- Iconos Phosphor -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #0f172a; 
+            background-image: radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+                              radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+                              radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+            background-attachment: fixed;
+            color: white; 
+            overscroll-behavior-y: none;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .message-anim { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .bubble-user { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); border-radius: 18px 18px 2px 18px; }
+        .bubble-bot { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 18px 18px 18px 2px; }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+
+    <!-- Header -->
+    <div class="absolute top-0 w-full z-20 p-4 safe-top">
+        <div class="bg-gray-900/60 backdrop-blur-md border border-white/10 rounded-2xl p-4 shadow-lg flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center text-xl shadow-lg" id="avatar-container">🤖</div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">Imbirt Voice</h1>
+                    <div class="flex items-center gap-1.5">
+                        <span id="status-dot" class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
+                        <span id="status-text" class="text-xs text-gray-400 font-medium">Conectando...</span>
+                    </div>
+                </div>
+            </div>
+            <button onclick="toggleMute()" id="mute-btn" class="p-2 text-gray-400 hover:text-white transition">
+                <i class="ph ph-speaker-high text-xl"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Chat -->
+    <div id="chat-history" class="flex-grow overflow-y-auto no-scrollbar pt-28 pb-4 px-4 space-y-4">
+        <div class="flex flex-col items-start message-anim">
+            <div class="bubble-bot px-4 py-3 max-w-[85%] text-gray-100 shadow-md">
+                <p>¡Hola! Ahora tengo voz humana. 🎙️<br>Activa el micrófono y charlemos.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Indicador de Escucha -->
+    <div id="listening-indicator" class="hidden absolute bottom-24 left-0 w-full flex justify-center z-10">
+        <div class="bg-red-500/90 text-white px-4 py-2 rounded-full flex gap-2 items-center shadow-lg backdrop-blur animate-bounce">
+            <i class="ph ph-microphone text-lg"></i>
+            <span class="text-sm font-semibold">Te escucho...</span>
+        </div>
+    </div>
+
+    <!-- Input -->
+    <div class="p-4 bg-gradient-to-t from-[#0f172a] to-transparent z-20 safe-bottom">
+        <div id="image-preview" class="hidden mb-3 relative inline-block animate-[slideIn_0.2s_ease-out]">
+            <img id="preview-img" class="h-16 w-16 object-cover rounded-xl border-2 border-purple-500 shadow-lg">
+            <button onclick="clearImage()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">×</button>
+        </div>
+
+        <div class="bg-gray-800/80 backdrop-blur-md border border-white/10 rounded-[2rem] p-1.5 flex items-center shadow-2xl gap-2">
+            <button onclick="document.getElementById('file-input').click()" class="w-10 h-10 rounded-full bg-gray-700/50 hover:bg-gray-700 text-gray-300 flex items-center justify-center transition">
+                <i class="ph ph-camera text-xl"></i>
+            </button>
+            <input type="file" id="file-input" accept="image/*" class="hidden" onchange="handleImage(event)">
+            
+            <input type="text" id="user-input" class="flex-grow bg-transparent border-none text-white px-3 py-2 focus:ring-0 placeholder-gray-500 text-sm outline-none" placeholder="Escribe o habla..." autocomplete="off" onkeypress="if(event.key === 'Enter') sendMessage()">
+            
+            <!-- Botón Micrófono -->
+            <button onclick="startListening()" id="mic-btn" class="w-10 h-10 rounded-full bg-gray-700/50 hover:bg-red-500/80 text-white flex items-center justify-center transition shadow-lg">
+                <i class="ph ph-microphone text-xl"></i>
+            </button>
+
+            <button onclick="sendMessage()" id="send-btn" class="w-10 h-10 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white flex items-center justify-center shadow-lg transition">
+                <i class="ph ph-paper-plane-right text-xl"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 🚀 URL DE LA NUBE (Render)
+        const API_URL = 'https://bot-imbirt.onrender.com/chat';
+        const HEALTH_URL = 'https://bot-imbirt.onrender.com/';
+
+        let userId = localStorage.getItem('imbirt_id') || 'web-' + Date.now();
+        localStorage.setItem('imbirt_id', userId);
+        let currentImageBase64 = null;
+        let isMuted = false;
+
+        // --- RECONOCIMIENTO DE VOZ ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'es-ES'; // Español
+            recognition.continuous = false;
+            
+            recognition.onstart = () => {
+                document.getElementById('listening-indicator').classList.remove('hidden');
+                document.getElementById('mic-btn').classList.add('bg-red-500', 'animate-pulse');
+            };
+            
+            recognition.onend = () => {
+                document.getElementById('listening-indicator').classList.add('hidden');
+                document.getElementById('mic-btn').classList.remove('bg-red-500', 'animate-pulse');
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                document.getElementById('user-input').value = transcript;
+                sendMessage(true); 
+            };
+        } else {
+            // Si el navegador no tiene voz, ocultamos el botón
+            document.getElementById('mic-btn').style.display = 'none';
+        }
+
+        function startListening() {
+            if (recognition) recognition.start();
+            else alert("Tu navegador no soporta reconocimiento de voz. Prueba en Chrome o Edge.");
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            const btn = document.getElementById('mute-btn');
+            btn.innerHTML = isMuted ? '<i class="ph ph-speaker-slash text-xl text-red-400"></i>' : '<i class="ph ph-speaker-high text-xl"></i>';
+        }
+
+        // --- CONEXIÓN ---
+        checkConnection();
+        async function checkConnection() {
+            try {
+                const res = await fetch(HEALTH_URL);
+                if(res.ok) updateStatus("En Línea", "bg-green-500");
+            } catch (e) {
+                updateStatus("Despertando...", "bg-yellow-500");
+                setTimeout(checkConnection, 5000);
+            }
+        }
+
+        function updateStatus(text, color) {
+            document.getElementById('status-text').innerText = text;
+            document.getElementById('status-dot').className = `w-2 h-2 rounded-full ${color} ${text === 'Despertando...' ? 'animate-pulse' : ''}`;
+        }
+
+        // --- IMAGENES Y ENVIO ---
+        function handleImage(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                document.getElementById('preview-img').src = ev.target.result;
+                document.getElementById('image-preview').classList.remove('hidden');
+                currentImageBase64 = ev.target.result.split(',')[1];
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearImage() {
+            currentImageBase64 = null;
+            document.getElementById('file-input').value = '';
+            document.getElementById('image-preview').classList.add('hidden');
+        }
+
+        async function sendMessage(forceVoice = false) {
+            const input = document.getElementById('user-input');
+            const text = input.value.trim();
+            
+            if (!text && !currentImageBase64) return;
+
+            addBubble(text, 'user', currentImageBase64 ? document.getElementById('preview-img').src : null);
+            input.value = '';
+            const imageToSend = currentImageBase64;
+            clearImage();
+            
+            const btn = document.getElementById('send-btn');
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        texto: text,
+                        imagen_base64: imageToSend,
+                        usar_voz: !isMuted || forceVoice
+                    })
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    addBubble('⚠️ Error: ' + data.error, 'bot');
+                } else {
+                    addBubble(data.imbirt, 'bot');
+                    if (data.audio) playAudio(data.audio);
+                }
+                updateStatus("En Línea", "bg-green-500");
+
+            } catch (err) {
+                console.error(err);
+                updateStatus("Error", "bg-red-500");
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function playAudio(base64Audio) {
+            const audio = new Audio("data:audio/mp3;base64," + base64Audio);
+            audio.play().catch(e => console.log("Autoplay bloqueado hasta interacción de usuario"));
+            const avatar = document.getElementById('avatar-container');
+            avatar.classList.add('animate-bounce');
+            audio.onended = () => avatar.classList.remove('animate-bounce');
+        }
+
+        function addBubble(text, sender, imgSrc) {
+            const history = document.getElementById('chat-history');
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex flex-col w-full message-anim ${sender === 'user' ? 'items-end' : 'items-start'}`;
+            let contentHtml = '';
+            if (imgSrc) contentHtml += `<img src="${imgSrc}" class="rounded-xl mb-2 max-h-48 object-cover border border-white/10">`;
+            if (text) {
+                const bubbleClass = sender === 'user' ? 'bubble-user text-white' : 'bubble-bot text-gray-100';
+                contentHtml += `<div class="${bubbleClass} px-4 py-2.5 max-w-[85%] shadow-md text-sm sm:text-base leading-relaxed"><p>${text.replace(/\n/g, '<br>')}</p></div>`;
+            }
+            wrapper.innerHTML = contentHtml;
+            history.appendChild(wrapper);
+            history.scrollTop = history.scrollHeight;
+        }
+    </script>
+</body>
+</html>
